@@ -1,37 +1,55 @@
-"""OpenClaude Licensing — silent registration, heartbeat, and telemetry."""
+"""OpenClaude Licensing — direct registration, activation, heartbeat, shutdown.
+
+Follows the Evolution Licensing Server protocol:
+  POST /v1/register/direct  — register with email/name, receive api_key
+  POST /v1/activate         — validate existing api_key on startup
+  POST /v1/heartbeat        — periodic ping with telemetry
+  POST /v1/deactivate       — mark instance as offline on shutdown
+  GET  /api/geo             — geo-lookup from client IP
+"""
 
 import hashlib
+import hmac as hmac_mod
 import socket
 import uuid
 import time
 import threading
 import logging
-import requests
 from datetime import datetime, timezone
+
+import requests
 
 logger = logging.getLogger("licensing")
 
 LICENSING_SERVER = "https://license.evolutionfoundation.com.br"
 PRODUCT = "open-claude"
 VERSION = "0.1.0"
-HEARTBEAT_INTERVAL = 1800  # 30 minutes
+TIER = "open-claude-community"
+HEARTBEAT_INTERVAL = 300  # 5 minutes (matching Ruby impl)
+TIMEOUT = 10
 
 
-# ── Instance ID ──────────────────────────────
+# ── Instance ID (hardware-based) ─────────────
 
 def generate_instance_id() -> str:
-    """Generate unique ID based on hardware (hostname + MAC)."""
+    """Generate unique ID based on hardware (hostname + MAC). Deterministic per machine."""
     hostname = socket.gethostname()
     mac = uuid.getnode()
     raw = f"{hostname}-{mac}-{PRODUCT}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
-# ── RuntimeConfig persistence ────────────────
+# ── HMAC Signing ─────────────────────────────
+
+def _hmac_sign(api_key: str, body: str) -> str:
+    """HMAC-SHA256 signature for authenticated requests."""
+    return hmac_mod.new(api_key.encode(), body.encode(), hashlib.sha256).hexdigest()
+
+
+# ── RuntimeConfig persistence (DB) ───────────
 
 def get_runtime_config(key: str) -> str | None:
-    """Read a runtime config value from DB."""
-    from models import db, RuntimeConfig
+    from models import RuntimeConfig
     try:
         row = RuntimeConfig.query.filter_by(key=key).first()
         return row.value if row else None
@@ -40,7 +58,6 @@ def get_runtime_config(key: str) -> str | None:
 
 
 def set_runtime_config(key: str, value: str):
-    """Write a runtime config value to DB."""
     from models import db, RuntimeConfig
     try:
         row = RuntimeConfig.query.filter_by(key=key).first()
@@ -52,124 +69,296 @@ def set_runtime_config(key: str, value: str):
             db.session.add(row)
         db.session.commit()
     except Exception as e:
-        logger.warning(f"Failed to save runtime config {key}: {e}")
+        logger.warning(f"Failed to save config {key}: {e}")
 
 
-# ── Licensing Client ─────────────────────────
+# ── Transport (HTTP client) ──────────────────
 
-class LicensingClient:
-    def __init__(self, instance_id: str, api_key: str | None = None):
-        self.instance_id = instance_id
-        self.api_key = api_key
-        self.session = requests.Session()
-        self.session.timeout = 10
-        self.session.headers["Content-Type"] = "application/json"
-        self.session.headers["User-Agent"] = f"OpenClaude/{VERSION}"
+def _post(path: str, payload: dict, api_key: str | None = None) -> dict:
+    """POST to licensing server. If api_key provided, signs with HMAC."""
+    import json
+    url = f"{LICENSING_SERVER}{path}"
+    body = json.dumps(payload)
 
-    def register(self, data: dict) -> dict:
-        """Silent registration during setup. Returns {api_key, tier, customer_id}."""
-        payload = {
-            "instance_id": self.instance_id,
-            "version": VERSION,
-            "product": PRODUCT,
-            "owner_name": data.get("owner_name", ""),
-            "company_name": data.get("company_name", ""),
-            "email": data.get("email", ""),
-            "timezone": data.get("timezone", ""),
-            "language": data.get("language", ""),
-            "agents": data.get("agents", []),
-            "integrations": data.get("integrations", []),
-            "geo": data.get("geo", {}),
-        }
-        try:
-            resp = self.session.post(f"{LICENSING_SERVER}/api/register", json=payload)
-            if resp.ok:
-                result = resp.json()
-                self.api_key = result.get("api_key")
-                return result
-            logger.warning(f"Licensing register failed: {resp.status_code}")
-        except Exception as e:
-            logger.warning(f"Licensing register error (server may be offline): {e}")
-        return {}
-
-    def heartbeat(self, stats: dict) -> dict:
-        """Periodic heartbeat with telemetry."""
-        payload = {
-            "instance_id": self.instance_id,
-            "api_key": self.api_key,
-            "version": VERSION,
-            "product": PRODUCT,
-            "uptime_seconds": stats.get("uptime", 0),
-            "active_agents": stats.get("agents", 0),
-            "active_routines": stats.get("routines", 0),
-            "user_count": stats.get("users", 0),
-        }
-        try:
-            resp = self.session.post(f"{LICENSING_SERVER}/api/heartbeat", json=payload)
-            if resp.ok:
-                return resp.json()
-        except Exception:
-            pass  # Silent failure — don't break the app
-        return {}
-
-    def deactivate(self):
-        """Called on shutdown."""
-        try:
-            self.session.post(
-                f"{LICENSING_SERVER}/api/deactivate",
-                json={"instance_id": self.instance_id, "api_key": self.api_key},
-                timeout=5,
-            )
-        except Exception:
-            pass  # Best effort
-
-
-# ── Registration (called from setup) ─────────
-
-def register_instance(setup_data: dict, email: str | None = None):
-    """Register this instance with the licensing server. Called once during setup."""
-    instance_id = generate_instance_id()
-    client = LicensingClient(instance_id)
-
-    reg_data = {
-        "owner_name": setup_data.get("owner_name", ""),
-        "company_name": setup_data.get("company_name", ""),
-        "email": email or "",
-        "timezone": setup_data.get("timezone", ""),
-        "language": setup_data.get("language", ""),
-        "agents": setup_data.get("agents", []),
-        "integrations": setup_data.get("integrations", []),
-        "geo": setup_data.get("geo", {}),
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": f"OpenClaude/{VERSION}",
     }
 
-    result = client.register(reg_data)
+    if api_key:
+        signature = _hmac_sign(api_key, body)
+        headers["Authorization"] = f"HMAC {signature}"
 
-    # Persist to DB
-    set_runtime_config("instance_id", instance_id)
+    resp = requests.post(url, data=body, headers=headers, timeout=TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _get(path: str, headers: dict | None = None) -> dict:
+    """GET from licensing server."""
+    url = f"{LICENSING_SERVER}{path}"
+    h = {"Accept": "application/json", "User-Agent": f"OpenClaude/{VERSION}"}
+    if headers:
+        h.update(headers)
+    resp = requests.get(url, headers=h, timeout=TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ── Geo Lookup ───────────────────────────────
+
+def geo_lookup(client_ip: str | None = None) -> dict:
+    """Get geo data from licensing server based on client IP."""
+    if not client_ip:
+        return {}
+    try:
+        return _get("/api/geo", headers={"X-Forwarded-For": client_ip})
+    except Exception:
+        return {}
+
+
+# ── Direct Registration ──────────────────────
+
+def direct_register(email: str, name: str, instance_id: str,
+                    country: str | None = None, city: str | None = None) -> dict:
+    """Register directly with the licensing server. Returns {api_key, tier, customer_id}."""
+    payload = {
+        "tier": TIER,
+        "email": email,
+        "name": name,
+        "instance_id": instance_id,
+        "version": VERSION,
+    }
+    if country:
+        payload["country"] = country
+    if city:
+        payload["city"] = city
+
+    return _post("/v1/register/direct", payload)
+
+
+# ── Activation (startup with existing api_key) ──
+
+def activate(instance_id: str, api_key: str) -> bool:
+    """Validate existing api_key with licensing server. Returns True if active."""
+    try:
+        result = _post("/v1/activate", {
+            "instance_id": instance_id,
+            "version": VERSION,
+        }, api_key=api_key)
+        return result.get("status") == "active"
+    except Exception:
+        return False
+
+
+# ── Heartbeat ────────────────────────────────
+
+def heartbeat(instance_id: str, api_key: str, stats: dict | None = None) -> dict:
+    """Periodic heartbeat. Returns server response."""
+    payload = {
+        "instance_id": instance_id,
+        "version": VERSION,
+        "messages_sent": 0,
+    }
+    if stats:
+        payload.update(stats)
+
+    try:
+        return _post("/v1/heartbeat", payload, api_key=api_key)
+    except Exception:
+        return {}
+
+
+# ── Deactivation (shutdown) ──────────────────
+
+def deactivate(instance_id: str) -> bool:
+    """Mark instance as offline on the licensing server."""
+    try:
+        _post("/v1/deactivate", {
+            "instance_id": instance_id,
+            "version": VERSION,
+        })
+        return True
+    except Exception:
+        return False
+
+
+# ── Runtime Context (in-memory state) ────────
+
+class RuntimeContext:
+    """Thread-safe singleton holding license state."""
+
+    def __init__(self):
+        self.instance_id: str | None = None
+        self.api_key: str | None = None
+        self.tier: str = TIER
+        self._active = threading.Event()
+
+    @property
+    def active(self) -> bool:
+        return self._active.is_set()
+
+    def activate(self, api_key: str, instance_id: str):
+        self.api_key = api_key
+        self.instance_id = instance_id
+        self._active.set()
+
+    def deactivate_ctx(self):
+        self._active.clear()
+
+
+# Global singleton
+_context = RuntimeContext()
+
+
+def get_context() -> RuntimeContext:
+    return _context
+
+
+# ── Setup (orchestrates direct registration) ─
+
+def setup_perform(email: str, name: str, client_ip: str | None = None):
+    """Full setup flow: geo lookup → direct register → save → activate → heartbeat."""
+    ctx = get_context()
+
+    # 1. Load or create instance_id
+    instance_id = get_runtime_config("instance_id")
+    if not instance_id:
+        instance_id = generate_instance_id()
+        set_runtime_config("instance_id", instance_id)
+
+    # 2. Geo lookup
+    geo = geo_lookup(client_ip)
+
+    # 3. Direct register
+    try:
+        result = direct_register(
+            email=email,
+            name=name,
+            instance_id=instance_id,
+            country=geo.get("country"),
+            city=geo.get("city"),
+        )
+    except Exception as e:
+        logger.warning(f"License registration failed (non-blocking): {e}")
+        # Save instance_id at minimum
+        set_runtime_config("version", VERSION)
+        set_runtime_config("tier", TIER)
+        set_runtime_config("activated_at", datetime.now(timezone.utc).isoformat())
+        return
+
+    # 4. Save to DB
+    api_key = result.get("api_key", "")
+    if api_key:
+        set_runtime_config("api_key", api_key)
+    set_runtime_config("tier", result.get("tier", TIER))
+    if result.get("customer_id"):
+        set_runtime_config("customer_id", str(result["customer_id"]))
     set_runtime_config("version", VERSION)
     set_runtime_config("activated_at", datetime.now(timezone.utc).isoformat())
 
-    if result.get("api_key"):
-        set_runtime_config("api_key", result["api_key"])
-    if result.get("tier"):
-        set_runtime_config("tier", result["tier"])
-    if result.get("customer_id"):
-        set_runtime_config("customer_id", str(result["customer_id"]))
-
-    # Even if server is offline, we save instance_id so heartbeat can retry later
-    set_runtime_config("tier", result.get("tier", "free"))
-
-    return instance_id
+    # 5. Activate in memory
+    if api_key:
+        ctx.activate(api_key=api_key, instance_id=instance_id)
+        logger.info(f"License activated: {instance_id[:8]}...")
 
 
-# ── Heartbeat thread ─────────────────────────
+# ── Initialize Runtime (startup) ─────────────
+
+def initialize_runtime():
+    """Called on app startup. Tries to load and validate existing license."""
+    ctx = get_context()
+
+    # 1. Load or create instance_id
+    instance_id = get_runtime_config("instance_id")
+    if not instance_id:
+        instance_id = generate_instance_id()
+        set_runtime_config("instance_id", instance_id)
+
+    ctx.instance_id = instance_id
+
+    # 2. Try to load existing api_key
+    api_key = get_runtime_config("api_key")
+    if not api_key:
+        logger.info("No license found — waiting for setup/login to register")
+        return
+
+    # 3. Validate with licensing server (POST /v1/activate)
+    if activate(instance_id, api_key):
+        ctx.activate(api_key=api_key, instance_id=instance_id)
+        logger.info(f"License validated on startup: {instance_id[:8]}...")
+    else:
+        logger.info("License validation failed — will retry on next login")
+        ctx.api_key = api_key  # Keep for retry
+
+
+# ── Attempt Setup (on login, if not active) ──
+
+def attempt_setup_on_login(email: str, name: str, client_ip: str | None = None):
+    """Called on user login. If license not active, tries to register/reactivate."""
+    ctx = get_context()
+
+    # Already active? Nothing to do.
+    if ctx.active:
+        return
+
+    instance_id = ctx.instance_id or get_runtime_config("instance_id")
+    api_key = ctx.api_key or get_runtime_config("api_key")
+
+    # Try reactivation with existing api_key
+    if api_key and instance_id:
+        if activate(instance_id, api_key):
+            ctx.activate(api_key=api_key, instance_id=instance_id)
+            return
+
+    # Last resort: direct register
+    setup_perform(email=email, name=name, client_ip=client_ip)
+
+
+# ── Auto-register for existing installs ──────
+
+def auto_register_if_needed():
+    """If users exist but no license, register retroactively."""
+    try:
+        instance_id = get_runtime_config("instance_id")
+        api_key = get_runtime_config("api_key")
+
+        # Already has api_key → just initialize
+        if api_key:
+            initialize_runtime()
+            return
+
+        from models import User
+        if User.query.count() == 0:
+            return  # No setup yet
+
+        # Has users but no api_key → register with admin data
+        admin = User.query.filter_by(role="admin").first()
+        if not admin:
+            return
+
+        # Ensure instance_id
+        if not instance_id:
+            instance_id = generate_instance_id()
+            set_runtime_config("instance_id", instance_id)
+
+        setup_perform(
+            email=admin.email or "",
+            name=admin.display_name or admin.username,
+        )
+    except Exception as e:
+        logger.debug(f"Auto-register skipped: {e}")
+
+
+# ── Heartbeat Thread ─────────────────────────
 
 _heartbeat_thread = None
 _start_time = time.time()
 
 
 def start_heartbeat(app):
-    """Start background heartbeat thread. Call after app is initialized."""
+    """Start background heartbeat thread."""
     global _heartbeat_thread
 
     def _run():
@@ -177,108 +366,49 @@ def start_heartbeat(app):
             time.sleep(HEARTBEAT_INTERVAL)
             try:
                 with app.app_context():
-                    instance_id = get_runtime_config("instance_id")
-                    api_key = get_runtime_config("api_key")
-                    if not instance_id:
+                    ctx = get_context()
+                    if not ctx.active or not ctx.api_key or not ctx.instance_id:
                         continue
 
                     from models import User
-                    client = LicensingClient(instance_id, api_key)
-                    stats = {
-                        "uptime": int(time.time() - _start_time),
-                        "agents": 9,
-                        "routines": 27,
-                        "users": User.query.count(),
-                    }
-                    result = client.heartbeat(stats)
+                    result = heartbeat(ctx.instance_id, ctx.api_key, {
+                        "uptime_seconds": int(time.time() - _start_time),
+                        "user_count": User.query.count(),
+                    })
 
-                    # If revoked, update local state (but don't block)
                     if result.get("status") == "revoked":
+                        ctx.deactivate_ctx()
                         set_runtime_config("tier", "revoked")
-            except Exception as e:
-                logger.debug(f"Heartbeat error: {e}")
+                        logger.warning("License revoked by server")
+            except Exception:
+                pass
 
     _heartbeat_thread = threading.Thread(target=_run, daemon=True, name="licensing-heartbeat")
     _heartbeat_thread.start()
 
 
-# ── Shutdown hook ────────────────────────────
+# ── Shutdown Hook ────────────────────────────
 
 def on_shutdown(app):
     """Deactivate instance on server shutdown."""
     try:
         with app.app_context():
-            instance_id = get_runtime_config("instance_id")
-            api_key = get_runtime_config("api_key")
-            if instance_id:
-                client = LicensingClient(instance_id, api_key)
-                client.deactivate()
+            ctx = get_context()
+            if ctx.instance_id:
+                deactivate(ctx.instance_id)
     except Exception:
         pass
 
 
-# ── Auto-register for existing installs ───────
-
-def auto_register_if_needed():
-    """If there are users but no instance_id, register retroactively.
-    This handles installs that existed before licensing was added."""
-    try:
-        instance_id = get_runtime_config("instance_id")
-        if instance_id:
-            return  # Already registered
-
-        from models import User
-        if User.query.count() == 0:
-            return  # No setup done yet, will register during setup
-
-        # Existing install — register now
-        instance_id = generate_instance_id()
-        client = LicensingClient(instance_id)
-
-        # Get basic info from first admin user
-        admin = User.query.filter_by(role="admin").first()
-        reg_data = {
-            "owner_name": admin.display_name if admin else "",
-            "email": admin.email if admin else "",
-            "company_name": "",
-            "timezone": "",
-            "language": "",
-            "agents": [],
-            "integrations": [],
-            "geo": {},
-        }
-
-        result = client.register(reg_data)
-
-        # Persist
-        set_runtime_config("instance_id", instance_id)
-        set_runtime_config("version", VERSION)
-        set_runtime_config("activated_at", datetime.now(timezone.utc).isoformat())
-        set_runtime_config("tier", result.get("tier", "free"))
-
-        if result.get("api_key"):
-            set_runtime_config("api_key", result["api_key"])
-        if result.get("customer_id"):
-            set_runtime_config("customer_id", str(result["customer_id"]))
-
-        logger.info(f"Auto-registered existing install: {instance_id[:8]}...")
-    except Exception as e:
-        logger.debug(f"Auto-register skipped: {e}")
-
-
-# ── License status ───────────────────────────
+# ── License Status (for dashboard) ───────────
 
 def get_license_status() -> dict:
-    """Get current license status for the admin dashboard."""
-    instance_id = get_runtime_config("instance_id")
-    tier = get_runtime_config("tier")
-    activated_at = get_runtime_config("activated_at")
-
+    ctx = get_context()
     return {
-        "active": instance_id is not None,
-        "instance_id": instance_id,
-        "tier": tier or "free",
+        "active": ctx.active,
+        "instance_id": ctx.instance_id or get_runtime_config("instance_id"),
+        "tier": get_runtime_config("tier") or TIER,
         "version": VERSION,
-        "activated_at": activated_at,
+        "activated_at": get_runtime_config("activated_at"),
         "product": PRODUCT,
     }

@@ -72,13 +72,16 @@ def setup():
     audit(user, "setup_completed")
     audit(user, "login")
 
-    # Silent licensing registration
-    if workspace_data:
-        try:
-            from licensing import register_instance
-            register_instance(workspace_data, email=email or None)
-        except Exception:
-            pass  # Never block setup if licensing server is offline
+    # License registration (direct — no OAuth, no redirect)
+    try:
+        from licensing import setup_perform
+        setup_perform(
+            email=email or "",
+            name=display_name or username,
+            client_ip=request.remote_addr,
+        )
+    except Exception:
+        pass  # Never block setup if licensing server is offline
 
     return jsonify({"user": user.to_dict(), "message": "Setup complete"})
 
@@ -168,6 +171,18 @@ def login():
     db.session.commit()
 
     audit(user, "login")
+
+    # Attempt licensing setup on login (if not yet active)
+    try:
+        from licensing import attempt_setup_on_login
+        attempt_setup_on_login(
+            email=user.email or "",
+            name=user.display_name or user.username,
+            client_ip=request.remote_addr,
+        )
+    except Exception:
+        pass
+
     return jsonify({"user": user.to_dict()})
 
 
