@@ -45,7 +45,7 @@ It turns a single Claude Code installation into a team of 9 specialized agents �
 - **7 Core + 20 Custom Routines** — daily, weekly, and monthly ADWs managed by a scheduler (core routines ship with the repo; custom routines are user-created and gitignored)
 - **Web Dashboard** — React + Flask app with auth, roles, web terminal, service management
 - **18 Integrations** — Google Calendar, Gmail, Linear, GitHub, Discord, Telegram, Stripe, Omie, Fathom, Todoist, YouTube, Instagram, LinkedIn, and more
-- **17 HTML Report Templates** — dark-themed dashboards for every domain
+- **2 core + custom HTML report templates** — dark-themed dashboards for every domain
 - **Persistent Memory** — two-tier system (CLAUDE.md + memory/) across sessions
 - **Full Observability** — JSONL logs, execution metrics, cost tracking per routine
 
@@ -250,7 +250,7 @@ open-claude/
 │   ├── agents/          — 9 agent system prompts
 │   ├── commands/        — 9 slash commands
 │   ├── skills/          — ~67 skills by prefix
-│   └── templates/html/  — 17 HTML report templates
+│   └── templates/html/  — 2 core + custom HTML templates
 ├── ADWs/
 │   ├── runner.py        — execution engine (logs + metrics + notifications)
 │   ├── rotinas/         — 7 core routine scripts (shipped with repo)

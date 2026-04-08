@@ -37,7 +37,9 @@ memory/
 .claude/skills/prod-licensing-daily/
 .claude/skills/prod-licensing-weekly/
 .claude/skills/prod-licensing-monthly/
-.claude/templates/html/licensing-report.html
+
+# ── Custom templates (user-specific) ─────
+.claude/templates/html/custom/
 
 # ── Custom routines (user-specific, all in one place) ─
 ADWs/rotinas/custom/
