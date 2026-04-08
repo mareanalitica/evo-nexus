@@ -1,166 +1,136 @@
 #!/usr/bin/env python3
 """
-Evolution Workspace Scheduler
-Service that runs automated routines at defined times.
-Usage: make scheduler (or python scheduler.py)
+OpenClaude Scheduler
+Runs core routines on schedule. Custom routines loaded from config/routines.yaml.
+Usage: runs automatically with make dashboard-app
 """
 
 import subprocess
 import os
 import sys
 import signal
-import schedule
 import time
 from datetime import datetime
 from pathlib import Path
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.theme import Theme
-
-theme = Theme({
-    "info": "cyan",
-    "success": "bold green",
-    "warning": "yellow",
-    "error": "bold red",
-    "dim": "dim white",
-})
-
-console = Console(theme=theme)
-
 WORKSPACE = Path(__file__).parent
-PYTHON = "uv run python"
-ADW_DIR = WORKSPACE / "ADWs" / "routines"
+PYTHON = "uv run python" if os.system("command -v uv > /dev/null 2>&1") == 0 else "python3"
+ROUTINES_DIR = WORKSPACE / "ADWs" / "routines"
 
 
 def run_adw(name: str, script: str):
-    """Execute an ADW as a subprocess."""
+    """Execute a routine as subprocess."""
     now = datetime.now().strftime("%H:%M")
-    console.print(f"  [info]{now}[/info] [success]▶[/success] {name}")
+    script_path = ROUTINES_DIR / script
+    if not script_path.exists():
+        print(f"  {now} ✗ {name} — script not found: {script}")
+        return
 
     try:
         result = subprocess.run(
-            f"{PYTHON} {ADW_DIR / script}",
+            f"{PYTHON} {script_path}",
             shell=True,
             cwd=str(WORKSPACE),
-            timeout=900,  # 15 min max
+            timeout=900,
             capture_output=True,
             text=True,
         )
-
-        if result.returncode == 0:
-            console.print(f"  [info]{now}[/info] [success]✓[/success] {name} completed")
-        else:
-            console.print(f"  [info]{now}[/info] [error]✗[/error] {name} failed (exit {result.returncode})")
-
+        status = "✓" if result.returncode == 0 else "✗"
+        print(f"  {now} {status} {name}")
     except subprocess.TimeoutExpired:
-        console.print(f"  [info]{now}[/info] [error]✗[/error] {name} timeout (15min)")
+        print(f"  {now} ✗ {name} timeout (15min)")
     except Exception as e:
-        console.print(f"  [info]{now}[/info] [error]✗[/error] {name} error: {e}")
+        print(f"  {now} ✗ {name} error: {e}")
 
-
-# ============================================================
-# Routine definitions
-# ============================================================
 
 def setup_schedule():
-    """Configure all routines with their schedules."""
+    """Configure core routines. Custom routines loaded from config/routines.yaml."""
+    import schedule
 
-    # --- Daily ---
-    schedule.every().day.at("06:50").do(run_adw, "Review Todoist", "custom/review_todoist.py")
+    # ── Core routines (shipped with repo) ──
     schedule.every().day.at("07:00").do(run_adw, "Good Morning", "good_morning.py")
-    schedule.every().day.at("07:15").do(run_adw, "Email Triage", "custom/email_triage.py")
-    schedule.every(30).minutes.do(run_adw, "Sync Meetings", "custom/sync_meetings.py")
-    schedule.every().day.at("20:00").do(run_adw, "Community Pulse", "custom/community_daily.py")
-    schedule.every().day.at("20:15").do(run_adw, "FAQ Sync", "custom/faq_sync.py")
     schedule.every().day.at("21:00").do(run_adw, "End of Day", "end_of_day.py")
     schedule.every().day.at("21:15").do(run_adw, "Memory Sync", "memory_sync.py")
-    schedule.every().day.at("18:00").do(run_adw, "Social Analytics Daily", "custom/social_analytics.py")
-    schedule.every().day.at("18:30").do(run_adw, "Licensing Daily", "custom/licensing_daily.py")
-    schedule.every().day.at("19:00").do(run_adw, "Financial Pulse", "custom/financial_pulse.py")
-    schedule.every().day.at("21:30").do(run_adw, "Dashboard Consolidado", "custom/dashboard.py")
-
-    # --- Weekly ---
     schedule.every().friday.at("08:00").do(run_adw, "Weekly Review", "weekly_review.py")
-    schedule.every().friday.at("08:30").do(run_adw, "Trends", "custom/trends.py")
-    schedule.every().friday.at("09:00").do(run_adw, "Strategy Digest", "custom/strategy_digest.py")
-    schedule.every().monday.at("09:00").do(run_adw, "Linear Review", "custom/linear_review.py")
-    schedule.every().wednesday.at("09:00").do(run_adw, "Linear Review", "custom/linear_review.py")
-    schedule.every().friday.at("09:00").do(run_adw, "Linear Review", "custom/linear_review.py")
-    schedule.every().monday.at("09:15").do(run_adw, "GitHub Review", "custom/github_review.py")
-    schedule.every().wednesday.at("09:15").do(run_adw, "GitHub Review", "custom/github_review.py")
-    schedule.every().friday.at("09:15").do(run_adw, "GitHub Review", "custom/github_review.py")
-    schedule.every().monday.at("09:30").do(run_adw, "Community Weekly", "custom/community_weekly.py")
-    schedule.every().friday.at("07:30").do(run_adw, "Financial Weekly", "custom/financial_weekly.py")
-    schedule.every().friday.at("07:45").do(run_adw, "Licensing Weekly", "custom/licensing_weekly.py")
-    schedule.every().friday.at("08:15").do(run_adw, "Social Analytics Weekly", "custom/social_analytics.py")
-    schedule.every().sunday.at("10:00").do(run_adw, "Health Check-in", "custom/health_checkin.py")
 
-    # --- Monthly (day 1) ---
-    # Monthly close and community monthly run via check in the main loop (see below)
+    # ── Custom routines (from config/routines.yaml if exists) ──
+    _load_custom_routines(schedule)
 
 
-def show_schedule():
-    """Show table of scheduled routines."""
-    table = Table(title="Scheduled Routines", border_style="cyan", show_lines=False)
-    table.add_column("Next execution", style="cyan", width=20)
-    table.add_column("Routine", style="bold white")
-    table.add_column("Interval", style="dim")
+def _load_custom_routines(schedule):
+    """Load custom routines from config/routines.yaml."""
+    config_path = WORKSPACE / "config" / "routines.yaml"
+    if not config_path.exists():
+        return
 
-    jobs = sorted(schedule.get_jobs(), key=lambda j: j.next_run)
-    for job in jobs:
-        next_run = job.next_run.strftime("%Y-%m-%d %H:%M") if job.next_run else "—"
-        name = job.job_func.args[0] if job.job_func.args else "?"
-        interval = str(job)
-        table.add_row(next_run, name, interval)
+    try:
+        import yaml
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        if not config:
+            return
 
-    console.print(table)
+        for r in config.get("daily", []) or []:
+            if not r.get("enabled", True):
+                continue
+            script = r.get("script", "")
+            name = r.get("name", script)
+            if r.get("interval"):
+                schedule.every(int(r["interval"])).minutes.do(run_adw, name, f"custom/{script}")
+            elif r.get("time"):
+                schedule.every().day.at(r["time"]).do(run_adw, name, f"custom/{script}")
+
+        for r in config.get("weekly", []) or []:
+            if not r.get("enabled", True):
+                continue
+            script = r.get("script", "")
+            name = r.get("name", script)
+            day = r.get("day", "friday").lower()
+            time_str = r.get("time", "09:00")
+            days = r.get("days", [day])
+            for d in days:
+                getattr(schedule.every(), d, schedule.every().friday).at(time_str).do(
+                    run_adw, name, f"custom/{script}"
+                )
+
+        global _monthly_routines
+        _monthly_routines = config.get("monthly", []) or []
+
+    except Exception as e:
+        print(f"  Warning: Failed to load custom routines: {e}")
+
+
+_monthly_routines = []
 
 
 def main():
-    """Entry point for the scheduler."""
-    console.print(Panel(
-        "[bold white]Evolution Workspace Scheduler[/bold white]\n"
-        "[dim]Running automated routines • Ctrl+C to stop[/dim]\n"
-        "[dim]Notifications via MCP Telegram (inside skills)[/dim]",
-        border_style="cyan",
-        padding=(0, 2)
-    ))
+    """Entry point — standalone scheduler."""
+    import schedule
 
+    print("OpenClaude Scheduler")
     setup_schedule()
-    show_schedule()
-
     total = len(schedule.get_jobs())
-    console.print(f"\n  [success]✓[/success] {total} routines scheduled")
-    console.print(f"  [dim]Timezone: BRT (UTC-3) • Logs: ADWs/logs/[/dim]\n")
+    print(f"  {total} routines scheduled")
+    print(f"  Press Ctrl+C to stop\n")
 
-    # Graceful shutdown
     def shutdown(sig, frame):
-        console.print(f"\n  [warning]⚠ Scheduler stopped[/warning]")
+        print("\n  Scheduler stopped")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    # Monthly routine control
-    monthly_close_ran = False
-
-    # Main loop
+    monthly_ran = False
     while True:
         schedule.run_pending()
-
-        # Monthly routines — run on day 1
         now = datetime.now()
-        if now.day == 1 and now.hour == 8 and not monthly_close_ran:
-            run_adw("Monthly Close Kickoff", "custom/monthly_close.py")
-            run_adw("Community Monthly", "custom/community_monthly.py")
-            run_adw("Licensing Monthly", "custom/licensing_monthly.py")
-            run_adw("Social Analytics Monthly", "custom/social_analytics.py")
-            monthly_close_ran = True
+        if now.day == 1 and now.hour == 8 and not monthly_ran:
+            for r in _monthly_routines:
+                if r.get("enabled", True):
+                    run_adw(r.get("name", r.get("script", "")), f"custom/{r['script']}")
+            monthly_ran = True
         elif now.day != 1:
-            monthly_close_ran = False
-
+            monthly_ran = False
         time.sleep(30)
 
 
