@@ -7,6 +7,8 @@ interface Template {
   name: string
   path: string
   content?: string
+  custom?: boolean
+  type?: string
 }
 
 export default function Templates() {
@@ -82,11 +84,18 @@ export default function Templates() {
               onClick={() => loadTemplate(t)}
               className="bg-[#182230] border border-[#344054] rounded-xl p-5 hover:border-[#00FFA7] transition-colors text-left group"
             >
-              <Layout size={20} className="text-[#00FFA7] mb-2" />
+              <div className="flex items-center justify-between mb-2">
+                <Layout size={20} className="text-[#00FFA7]" />
+                {t.custom ? (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#344054] text-[#667085]">custom</span>
+                ) : (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#00FFA7]/10 text-[#00FFA7]">core</span>
+                )}
+              </div>
               <h3 className="text-sm font-medium text-[#F9FAFB] group-hover:text-[#00FFA7] transition-colors">
                 {t.name}
               </h3>
-              <p className="text-xs text-[#667085] mt-1">{t.path}</p>
+              <p className="text-xs text-[#667085] mt-1">{t.type === 'html' ? 'HTML' : 'Markdown'}</p>
             </button>
           ))}
         </div>

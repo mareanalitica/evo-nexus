@@ -40,6 +40,7 @@ memory/
 
 # ── Custom templates (user-specific) ─────
 .claude/templates/html/custom/
+.claude/templates/custom/
 
 # ── Custom routines (user-specific, all in one place) ─
 ADWs/routines/custom/
