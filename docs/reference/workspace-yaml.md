@@ -93,7 +93,7 @@ http://localhost:{port}
 | Dashboard backend | `port` | Server binding |
 | Dashboard frontend | `name`, `owner` | UI display |
 | Scheduler | `timezone` | Routine scheduling |
-| CLAUDE.md template | All fields | Context generation |
+| setup.py (CLAUDE.md generation) | All fields | Context generation |
 
 ## Editing
 

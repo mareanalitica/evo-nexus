@@ -23,9 +23,10 @@ A skill is a directory in `.claude/skills/` containing a `SKILL.md` file with:
 
 Skills are organized by prefix:
 
+The repo ships **~80 skills** (non-evo). If you install [Evo Method](https://github.com/EvolutionAPI/EVO-METHOD) separately, you get ~45 additional `evo-` skills — these are gitignored from this repo but work normally when present locally.
+
 | Prefix | Category | Count | Examples |
 |--------|----------|-------|----------|
-| `evo-` | Evo Method (dev, architect, QA, PM) | ~45 | `evo-dev`, `evo-create-prd`, `evo-code-review` |
 | `social-` | Social media | ~17 | `social-post-writer`, `social-analytics-report` |
 | `int-` | Integrations | ~13 | `int-stripe`, `int-discord`, `int-youtube` |
 | `fin-` | Finance | ~11 | `fin-daily-pulse`, `fin-weekly-report`, `fin-reconciliation` |
@@ -36,6 +37,8 @@ Skills are organized by prefix:
 | `discord-` | Discord | ~5 | `discord-get-messages`, `discord-send-message` |
 | `pulse-` | Community | ~4 | `pulse-daily`, `pulse-weekly`, `pulse-monthly` |
 | `sage-` | Strategy | ~3 | `sage-okr-review`, `sage-strategy-digest` |
+
+> **Evo Method skills** (`evo-` prefix, ~45 skills) cover dev, architect, QA, PM, sprints, and reviews. They are maintained in the [EVO-METHOD](https://github.com/EvolutionAPI/EVO-METHOD) repo. Install them locally and they appear in `.claude/skills/` alongside the built-in skills — gitignored so they don't pollute this repo.
 
 ## How Triggering Works
 

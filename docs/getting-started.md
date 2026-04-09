@@ -44,7 +44,7 @@ At minimum, you need:
 - No keys required for basic operation (agents, skills work without integrations)
 - `DISCORD_BOT_TOKEN` — for community monitoring
 - `STRIPE_SECRET_KEY` — for financial routines
-- Social OAuth keys — via `make social-auth` or the dashboard
+- Social OAuth keys — via the dashboard Integrations page
 
 ### 3. Start the Dashboard
 
@@ -68,11 +68,11 @@ Just open Claude Code in this directory. It reads `CLAUDE.md` automatically and 
 
 ```bash
 # Invoke agents directly
-/ops           # Operations hub
-/finance       # Financial analysis
-/projects      # Project management
-/community     # Community pulse
-/social        # Social media
+/clawdia       # Operations hub
+/flux          # Financial analysis
+/atlas         # Project management
+/pulse         # Community pulse
+/pixel         # Social media
 
 # Or let Claude route automatically based on your request
 ```
@@ -80,6 +80,6 @@ Just open Claude Code in this directory. It reads `CLAUDE.md` automatically and 
 ## Next Steps
 
 - Read [Architecture](architecture.md) to understand how agents, skills, and routines work together
-- Browse `.claude/skills/CLAUDE.md` for the full skill index (~67 skills)
+- Browse `.claude/skills/CLAUDE.md` for the full skill index (~80 skills)
 - Check `ROUTINES.md` for routine documentation
 - Customize `config/routines.yaml` to adjust schedules

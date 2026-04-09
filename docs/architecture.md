@@ -11,12 +11,12 @@ OpenClaude is a file-based, git-friendly framework. Everything is markdown, YAML
 │                  Claude Code CLI                 │
 │                        │                         │
 │   ┌────────┬───────┬───────┬────────┬────────┐  │
-│   │  Ops   │Finance│Project│Community│ Social │  │
-│   │ Agent  │ Agent │ Agent │  Agent  │ Agent  │  │
+│   │Clawdia │ Flux  │ Atlas │  Pulse  │ Pixel  │  │
+│   │  (ops) │ (fin) │ (proj)│ (comm)  │ (soc)  │  │
 │   └───┬────┴───┬───┴───┬───┴────┬───┴────┬───┘  │
 │       │        │       │        │        │       │
 │   ┌───┴────────┴───────┴────────┴────────┴───┐   │
-│   │              Skills (~67)                 │   │
+│   │              Skills (~80)                 │   │
 │   │   fin- / social- / int- / prod- / mkt-   │   │
 │   └──────────────────────────────────────────┘   │
 │                        │                         │
@@ -28,7 +28,7 @@ OpenClaude is a file-based, git-friendly framework. Everything is markdown, YAML
 
         ┌───────────────────────┐
         │   Scheduler (cron)    │ ─── routines.yaml
-        │   ADW Runner          │ ─── 7 core + ~20 custom scripts
+        │   ADW Runner          │ ─── 4 core + ~23 custom examples
         │   JSONL Logs          │ ─── metrics + costs
         └───────────────────────┘
 
@@ -43,7 +43,7 @@ OpenClaude is a file-based, git-friendly framework. Everything is markdown, YAML
 
 ### Agents (`.claude/agents/`)
 
-Each agent is a markdown file with a system prompt that defines its domain, responsibilities, and behavioral rules. Agents are invoked via slash commands (`/ops`, `/finance`, etc.) or automatically by Claude based on the user's request.
+Each agent is a markdown file with a system prompt that defines its domain, responsibilities, and behavioral rules. Agents are invoked via slash commands (`/clawdia`, `/flux`, `/atlas`, etc.) or automatically by Claude based on the user's request.
 
 ### Skills (`.claude/skills/`)
 
@@ -62,15 +62,16 @@ Skills are domain-specific instructions that teach Claude how to perform specifi
 | `pulse-` | Community | 4 |
 | `sage-` | Strategy | 3 |
 
-> **Note:** `evo-` skills (Evo Method) were removed from this repo and are now maintained in the separate [EVO-METHOD](https://github.com/EvolutionAPI/EVO-METHOD) project. They are gitignored if present locally.
+> **Note:** `evo-` skills (~45) are maintained in the separate [EVO-METHOD](https://github.com/EvolutionAPI/EVO-METHOD) project. They are gitignored from this repo but work normally if installed locally. The repo ships ~80 non-evo skills.
 
-### Routines (`ADWs/routines/` and `ADWs/routines/custom/`)
+### Routines (`ADWs/routines/`)
 
 Automated workflows that run on a schedule. Each routine is a Python script that invokes Claude Code CLI with a specific agent and skill.
 
 Routines are split into two tiers:
-- **Core** (`ADWs/routines/`) — 4 routines shipped with the repo (morning, eod, dashboard, review, triage, sync, memory).
-- **Custom** (`ADWs/routines/custom/`) — ~20 user-created routines (gitignored). These are workspace-specific (community, finance, social, licensing, etc.).
+- **Core** (`ADWs/routines/`) — 4 routines shipped with the repo (good_morning, end_of_day, memory_sync, weekly_review).
+- **Examples** (`ADWs/routines/examples/`) — ~23 example routines tracked with the repo (community, finance, social, licensing, etc.).
+- **Custom** (`ADWs/routines/custom/`) — user-created routines (gitignored). Copy from examples or create your own.
 
 **Runner** (`ADWs/runner.py`) — The execution engine that:
 - Invokes Claude Code CLI with `--output-format json`

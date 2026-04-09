@@ -52,7 +52,7 @@ Nine specialized agents, each with a system prompt, slash command, persistent me
 
 ### Skills
 
-~67 reusable capabilities organized by prefix (`fin-`, `social-`, `int-`, `prod-`, etc.). Skills are markdown files that teach agents how to perform specific tasks — no plugins, no code.
+~80 reusable capabilities organized by prefix (`fin-`, `social-`, `int-`, `prod-`, etc.). Skills are markdown files that teach agents how to perform specific tasks — no plugins, no code.
 
 ### Routines
 

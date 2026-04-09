@@ -12,7 +12,7 @@ Walkthrough of two real routines showing how all the pieces fit together.
 
 ### The script
 
-`ADWs/routines/custom/community_daily.py`:
+`ADWs/routines/examples/community_daily.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -89,7 +89,7 @@ Plus a Telegram message with a brief summary.
 
 ### The script
 
-`ADWs/routines/custom/financial_pulse.py`:
+`ADWs/routines/examples/financial_pulse.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -164,7 +164,7 @@ Add an entry to `config/routines.yaml` and optionally add a Makefile target:
 
 ```makefile
 my-routine:         ## Description of my routine (@agent)
-	$(PYTHON) $(ADW_DIR)/custom/my_routine.py
+	$(PYTHON) $(ADW_DIR)/examples/my_routine.py
 ```
 
 ### 5. Test manually
@@ -172,7 +172,7 @@ my-routine:         ## Description of my routine (@agent)
 ```bash
 make my-routine
 # or
-python3 ADWs/routines/custom/my_routine.py
+python3 ADWs/routines/examples/my_routine.py
 ```
 
 Check `make logs` and `make metrics` to verify it ran correctly.

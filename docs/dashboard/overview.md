@@ -93,6 +93,18 @@ User management page (admin only). Create, edit, deactivate users. Assign roles.
 
 Define custom roles with a granular permission matrix. Each role maps resources (chat, services, reports, etc.) to actions (view, execute, manage). Built-in roles (admin, operator, viewer) cannot be deleted but can be cloned.
 
+### Costs
+
+Token usage and cost tracking per routine. Displays charts showing cost trends over time, token consumption breakdown (input vs output), and per-routine cost comparison. Useful for monitoring Claude API spend across automated workflows.
+
+### Files
+
+Browse workspace files directly from the dashboard. Navigate the folder structure, preview file contents, and understand how the workspace is organized without needing terminal access.
+
+### Scheduler
+
+Manage background services and scheduled routines. Shows all registered routines with core/custom badges, their schedules, enabled/disabled state, and last run status. Start, stop, or trigger routines from this page.
+
 ### Audit Log
 
 Full audit trail of all actions: logins, config changes, routine executions, user management. Filterable by user, action, resource, and date range.

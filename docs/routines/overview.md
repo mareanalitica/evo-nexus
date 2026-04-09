@@ -6,19 +6,24 @@ Routines are automated workflows (ADWs -- AI Developer Workflows) that run on a 
 
 ```
 ADWs/routines/
-  good_morning.py       # Core (ships with the repo)
+  good_morning.py       # Core (ships with the repo, hardcoded in scheduler.py)
   end_of_day.py         # Core
   memory_sync.py        # Core
   weekly_review.py      # Core
-  custom/               # User-created (gitignored)
+  examples/             # Example routines (tracked with the repo)
     community_daily.py
     financial_pulse.py
     ...
+  custom/               # User-created (gitignored), scheduled via routines.yaml
+    my_routine.py
+    ...
 ```
 
-**Core routines** ship with the repo and cover the essential daily loop: morning briefing, end of day, memory sync, and weekly review.
+**Core routines** ship with the repo and cover the essential daily loop: good_morning, end_of_day, memory_sync, and weekly_review. Their schedules are hardcoded in `scheduler.py` — they do NOT come from `config/routines.yaml`.
 
-**Custom routines** live in `ADWs/routines/custom/` and are gitignored. You create these for your specific integrations (Discord, Stripe, YouTube, etc). The `create-routine` skill helps generate them.
+**Example routines** live in `ADWs/routines/examples/` and are tracked with the repo. These are reference implementations for common integrations (Discord, Stripe, YouTube, etc).
+
+**Custom routines** live in `ADWs/routines/custom/` and are gitignored. Copy from examples or create your own. Only custom routines go in `config/routines.yaml`. The `create-routine` skill helps generate them.
 
 ## ADW Runner
 
@@ -78,7 +83,7 @@ For multi-step routines, append multiple results to the list.
 
 ## config/routines.yaml
 
-This file defines the schedule for all routines:
+This file defines the schedule for **custom routines only**. Core routines (good_morning, end_of_day, memory_sync, weekly_review) are hardcoded in `scheduler.py` and do not need entries here.
 
 ```yaml
 daily:
@@ -115,7 +120,7 @@ monthly:
 
 Fields:
 - `name`: Display name
-- `script`: Python file in `ADWs/routines/` or `ADWs/routines/custom/`
+- `script`: Python file in `ADWs/routines/custom/` (or `ADWs/routines/examples/`)
 - `time`: Execution time (24h format, local timezone)
 - `interval`: Run every N minutes (instead of fixed time)
 - `day`: Day of week (weekly) or day of month (monthly)
@@ -130,7 +135,7 @@ Start the scheduler with:
 make scheduler
 ```
 
-This runs `scheduler.py`, which reads `config/routines.yaml` and executes each routine at its scheduled time. The scheduler runs in the foreground and shows real-time progress.
+This runs `scheduler.py`, which has core routines hardcoded and also reads `config/routines.yaml` for custom routines. The scheduler runs in the foreground and shows real-time progress.
 
 The dashboard also starts/stops the scheduler from the **Services** page.
 
@@ -173,7 +178,7 @@ make social          # Social analytics
 Or run the Python script directly:
 
 ```bash
-python3 ADWs/routines/custom/community_daily.py
+python3 ADWs/routines/examples/community_daily.py
 ```
 
 ## Logs and Metrics

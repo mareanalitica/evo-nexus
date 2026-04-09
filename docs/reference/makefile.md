@@ -5,10 +5,11 @@ All available `make` commands. Run `make help` to see this list in your terminal
 ## Setup
 
 ```bash
-make setup           # Interactive setup wizard
+make setup           # Interactive setup wizard (runs setup.py)
                      # Checks prerequisites (Claude Code, uv, Node.js)
+                     # Installs Python deps via `uv sync`
                      # Creates config files, .env, CLAUDE.md, workspace folders
-                     # Builds the dashboard frontend
+                     # Builds the dashboard frontend via npm
 ```
 
 ## Dashboard
